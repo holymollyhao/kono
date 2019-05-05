@@ -6,89 +6,22 @@ import requests
 import pymysql
 
 #Connection to DB
-conn = pymysql.connect(host='localhost', user='root', password='22pitch', 
+conn = pymysql.connect(host='localhost', user='root', password='password', 
 	db='kono', charset='utf8')
 sql = """INSERT INTO room(room_number, status, timestamp, duration) VALUES (%s, %s, %s, SEC_TO_TIME(%s))"""
 
 time_acc = 1.0
 door_threshold = 190
 db_threshold = 401
-#pir_threshold = 0.2
-inpending_threshold = 10 #between song (30)
-outpending_threshold = 5 #between session (10)
+inpending_threshold = 10 / time_acc #between song (30)
+outpending_threshold = 5 / time_acc #between session (10)
 request_gap = 7
 
 def _timestamp():
 	return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-def error_handling():
-	pass
-"""
-def initialize(status, room_id):
-	status[room_id] = {'history': [], 'sound': [], 'door': [],
-						'session': {'use': 0, 'pending': 0, 'duration': 0}}
-	return status
-
-def door_check(response):
-	sound = response['sound']
-	door = response['door']
-	door_set, pending = 0, 0
-
-	for i in range(0, 10):
-		if door[i] <= door_threshold:
-			if sound[i] >= db_threshold:
-				pending = 0
-				continue
-			door_set = 1
-			pending += 1
-
-	return door_set, pending
-
-def sess_extend(status, rm):
-	if status[rm]['session']['use'] == 0:
-		status[rm]['session']['use'] = 1
-	status[rm]['session']['duration'] += request_gap
-	return status	
-
-def judge(status, responses):
-	# status = { room_id : {'history': [], 'sound': [], 'door': [],
-	#						'session': {'use': 0 or 1, 'pending': int, 'duration': ~ sec}}
-	for response in responses:
-		rm = resposne['room_id']
-		if rm not in status.keys():
-			status = initialize(status, rm)
-		history_info = status.get(rm, {})
-		sound_set, door_set, pending = 0, 0, 0
-		
-		for i in range(0, 10):
-			if door[i] <= door_threshold:
-				if sound[i] >= db_threshold:
-					pending = 0
-					sound_set = 1
-					#sess_extend(status, rm)
-				elif np.mean(pir) >= pir_threshold
-					pending += 1
-					door_set = 1
-					if pending 
-
-		#pending check
-		if history_info['session']['pending'] > 0:
-			pass
-		else:
-			sound = response['sound']
-			for i in range(0, 10):
-				if sound[i] >= db_threshold:
-					sound_set = 1
-					sess_extend(status, rm)
-					break
-			
-			if np.mean(pir) >= pir_threshold:
-				sess_extend(status, rm)
-
-			door_set, pending = door_check(response)
-"""
-def db_get():
-	pass
+def error_handling(ip, error_code):
+	print("Network from %s Error code %s", ip, error_code)
 
 def db_put(rm, _status):
 	try:
@@ -112,12 +45,18 @@ def _outpending(status, rm, door):
 	else:
 		status[rm]['out_pending'] = 0
 
+def sess_start(status, rm):
+	status[rm]['sess'] = 1
+
+def sess_extend(status, rm):
+	status[rm]['duration'] += 1
+
 def sess_close(status, rm):
 	db_put(rm, status[rm])
 	initialize(status, rm)
 
 def judge(status, responses):
-	# status = { room_id : {'sess': 0 or 1, 'in_pending': int, 'out_pending':int, 'duration': ~ sec}
+	# status = { room_id : {'sess': 0 or 1, 'in_pending': int, 'out_pending':int, 'duration': int(sec)}
 	#			 timestamp : ~}
 	for response in responses:
 		rm = response['room_id']
@@ -139,21 +78,17 @@ def judge(status, responses):
 					status[rm]['in_pending'], status[rm]['out_pending'] = 0, 0
 			else:
 				if sound[i] >= db_threshold:
-					# New-session when singing song
-					status[rm]['sess'] = 1
+					sess_start(status, rm)
 
 			# Session Control
 			if status[rm]['in_pending'] > inpending_threshold or status[rm]['out_pending'] > outpending_threshold:
 				sess_close(status, rm) # Close current session and put info in DB
 
 			if status[rm]['sess'] == 1:
-				status[rm]['duration'] += 1
+				sess_extend(status, rm)
 
 		status[rm]['timestamp'] = response['timestamp']
 		db_put(rm, status[rm])
-
-def acc_test():
-	pass
 
 def _run():	
 	status = {}
@@ -164,6 +99,8 @@ def _run():
 			response = requests.get(url=url)
 			if response.status_code != 500:
 				responses.append(response.json())
+			else:
+				error_handling(url, response.status_code)
 		judge(status, responses)
 		conn.commit()
 		sleep(request_gap)
@@ -171,8 +108,8 @@ def _run():
 def run():
 	try:
 		_run()
-	finally:
-		print("Error")
+	except:
+		print("Error in run()")
 
 def test():
 	status = {}
